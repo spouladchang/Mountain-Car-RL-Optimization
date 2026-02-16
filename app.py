@@ -1,13 +1,3 @@
-"""
-MountainCar Reinforcement Learning - Interactive Demo
-=====================================================
-A Streamlit web application comparing Q-Learning and DQN algorithms
-for solving the MountainCar-v0 environment.
-
-Author: Saeid Pouladchang
-GitHub: https://github.com/spouladchang/Mountain-Car-RL-Optimization
-"""
-
 import streamlit as st
 import numpy as np
 import gymnasium as gym
@@ -15,17 +5,11 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from collections import deque
-import matplotlib.pyplot as plt
 import plotly.graph_objects as go
-import plotly.express as px
 from plotly.subplots import make_subplots
 import time
 import random
-import io
-from PIL import Image
-import base64
 
-# Page configuration
 st.set_page_config(
     page_title="MountainCar RL Demo",
     page_icon="🏔️",
@@ -33,75 +17,103 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for beautiful design
 st.markdown("""
-<style>
-.main {
-    background-color: #f8f9fa;
-}
-.stTabs [data-baseweb="tab-list"] {
-    gap: 8px;
-}
-.stTabs [data-baseweb="tab"] {
-    height: 50px;
-    padding-left: 20px;
-    padding-right: 20px;
-    background-color: #e9ecef;
-    border-radius: 5px 5px 0 0;
-}
-.stTabs [aria-selected="true"] {
-    background-color: #007bff;
-    color: white;
-}
-.metric-card {
-    background-color: white;
-    padding: 20px;
-    border-radius: 10px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    margin: 10px 0;
-}
-.success-box {
-    background-color: #d4edda;
-    border-left: 5px solid #28a745;
-    padding: 15px;
-    border-radius: 5px;
-    margin: 10px 0;
-}
-.info-box {
-    background-color: #d1ecf1;
-    border-left: 5px solid #17a2b8;
-    padding: 15px;
-    border-radius: 5px;
-    margin: 10px 0;
-}
-.warning-box {
-    background-color: #fff3cd;
-    border-left: 5px solid #ffc107;
-    padding: 15px;
-    border-radius: 5px;
-    margin: 10px 0;
-}
-h1 {
-    color: #2c3e50;
-}
-h2 {
-    color: #34495e;
-}
-h3 {
-    color: #7f8c8d;
-}
-</style>
+    <style>
+    .main {
+        background-color: #f8f9fa;
+    }
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        height: 50px;
+        padding-left: 20px;
+        padding-right: 20px;
+        background-color: #ffffff;
+        border-radius: 8px 8px 0 0;
+        border: 1px solid #dee2e6;
+        border-bottom: none;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #007bff;
+        color: white;
+    }
+
+    .card-box {
+        padding: 20px;
+        border-radius: 12px;
+        margin: 10px 0;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        transition: transform 0.2s;
+        height: 100%; 
+    }
+    .card-box:hover {
+        transform: translateY(-5px);
+    }
+    
+    .objective-box {
+        background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+        border-left: 6px solid #2196f3;
+        color: #0d47a1;
+    }
+    
+    .reward-box {
+        background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+        border-left: 6px solid #4caf50;
+        color: #1b5e20;
+    }
+    
+    .action-box {
+        background: linear-gradient(135deg, #f3e5f5 0%, #e1bee7 100%);
+        border-left: 6px solid #9c27b0;
+        color: #4a148c;
+    }
+
+    .card-box h4 {
+        margin: 0 0 10px 0;
+        font-weight: 700;
+        font-size: 1.1rem;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .card-box p {
+        margin: 0;
+        font-size: 0.95rem;
+        line-height: 1.5;
+        opacity: 0.9;
+    }
+    
+    .success-box {
+        background-color: #d4edda;
+        border-left: 5px solid #28a745;
+        color: #155724;
+        padding: 15px;
+        border-radius: 5px;
+        margin: 10px 0;
+    }
+    .warning-box {
+        background-color: #fff3cd;
+        border-left: 5px solid #ffc107;
+        color: #856404;
+        padding: 15px;
+        border-radius: 5px;
+        margin: 10px 0;
+    }
+    .info-box-generic {
+        background-color: #d1ecf1;
+        border-left: 5px solid #17a2b8;
+        color: #0c5460;
+        padding: 15px;
+        border-radius: 5px;
+        margin: 10px 0;
+    }
+    </style>
 """, unsafe_allow_html=True)
 
-# Device configuration
 device = torch.device('cpu')
 
-# ============================================================================
-# NEURAL NETWORK DEFINITION (for DQN)
-# ============================================================================
-
 class DQNetwork(nn.Module):
-    """Deep Q-Network architecture."""
     def __init__(self, state_dim=2, action_dim=3, hidden_size=256):
         super(DQNetwork, self).__init__()
         self.network = nn.Sequential(
@@ -115,19 +127,12 @@ class DQNetwork(nn.Module):
     def forward(self, x):
         return self.network(x)
 
-# ============================================================================
-# Q-LEARNING FUNCTIONS
-# ============================================================================
-
 def discretize_qlearning(state, lower_bounds, upper_bounds, buckets):
-    """Discretize continuous state into buckets."""
     scaling = (state - lower_bounds) / (upper_bounds - lower_bounds)
     indices = (scaling * buckets).astype(int)
     return tuple(np.clip(indices, 0, np.array(buckets) - 1))
 
 def train_qlearning(episodes, buckets, learning_rate, lr_decay, epsilon_decay, gamma=0.99):
-    """Train Q-Learning agent with given parameters."""
-    
     env = gym.make('MountainCar-v0')
     lower_bounds = np.array([-1.2, -0.07])
     upper_bounds = np.array([0.6, 0.07])
@@ -151,7 +156,6 @@ def train_qlearning(episodes, buckets, learning_rate, lr_decay, epsilon_decay, g
         done = False
         
         while not done:
-            # Epsilon-greedy action selection
             if np.random.random() < epsilon:
                 action = env.action_space.sample()
             else:
@@ -161,7 +165,6 @@ def train_qlearning(episodes, buckets, learning_rate, lr_decay, epsilon_decay, g
             next_state_discrete = discretize_qlearning(next_obs, lower_bounds, upper_bounds, buckets)
             done = terminated or truncated
             
-            # Q-Learning update
             old_value = q_table[state][action]
             next_value = 0 if terminated else np.max(q_table[next_state_discrete])
             new_value = old_value + lr * (reward + gamma * next_value - old_value)
@@ -174,11 +177,9 @@ def train_qlearning(episodes, buckets, learning_rate, lr_decay, epsilon_decay, g
         rewards_history.append(episode_reward)
         positions_history.append(max_position)
         
-        # Decay parameters
         epsilon = max(min_epsilon, epsilon * epsilon_decay)
         lr = max(min_lr, lr * lr_decay)
         
-        # Update progress
         if (episode + 1) % max(1, episodes // 20) == 0:
             progress = (episode + 1) / episodes
             progress_bar.progress(progress)
@@ -199,7 +200,6 @@ def train_qlearning(episodes, buckets, learning_rate, lr_decay, epsilon_decay, g
     }
 
 def test_qlearning(policy, buckets, num_episodes=100):
-    """Test Q-Learning policy."""
     env = gym.make('MountainCar-v0')
     lower_bounds = np.array([-1.2, -0.07])
     upper_bounds = np.array([0.6, 0.07])
@@ -234,12 +234,7 @@ def test_qlearning(policy, buckets, num_episodes=100):
         'rewards': rewards
     }
 
-# ============================================================================
-# DQN FUNCTIONS
-# ============================================================================
-
 class DQNAgent:
-    """DQN Agent for training."""
     def __init__(self, hidden_size, learning_rate, gamma, epsilon_decay, batch_size, buffer_size):
         self.policy_net = DQNetwork(hidden_size=hidden_size).to(device)
         self.target_net = DQNetwork(hidden_size=hidden_size).to(device)
@@ -298,7 +293,6 @@ class DQNAgent:
 
 def train_dqn(episodes, hidden_size, learning_rate, epsilon_decay, batch_size, buffer_size, 
               target_update_freq, gamma=0.99):
-    """Train DQN agent with given parameters."""
     
     env = gym.make('MountainCar-v0')
     agent = DQNAgent(hidden_size, learning_rate, gamma, epsilon_decay, batch_size, buffer_size)
@@ -339,7 +333,6 @@ def train_dqn(episodes, hidden_size, learning_rate, epsilon_decay, batch_size, b
         positions_history.append(max_position)
         losses_history.append(np.mean(episode_losses) if episode_losses else 0)
         
-        # Update progress
         if (episode + 1) % max(1, episodes // 20) == 0:
             progress = (episode + 1) / episodes
             progress_bar.progress(progress)
@@ -358,7 +351,6 @@ def train_dqn(episodes, hidden_size, learning_rate, epsilon_decay, batch_size, b
     }
 
 def test_dqn(agent, num_episodes=100):
-    """Test DQN agent."""
     env = gym.make('MountainCar-v0')
     agent.policy_net.eval()
     
@@ -394,14 +386,8 @@ def test_dqn(agent, num_episodes=100):
         'rewards': rewards
     }
 
-# ============================================================================
-# VISUALIZATION FUNCTIONS
-# ============================================================================
-
 def plot_training_results(rewards, positions, algorithm):
-    """Create interactive training plots with Plotly."""
     
-    # Calculate moving average
     window = min(100, len(rewards) // 10)
     if window > 0:
         rewards_ma = np.convolve(rewards, np.ones(window)/window, mode='valid')
@@ -410,14 +396,12 @@ def plot_training_results(rewards, positions, algorithm):
         rewards_ma = rewards
         positions_ma = positions
     
-    # Create subplots
     fig = make_subplots(
         rows=2, cols=1,
         subplot_titles=('Episode Rewards', 'Maximum Position Reached'),
         vertical_spacing=0.12
     )
     
-    # Plot 1: Rewards
     fig.add_trace(
         go.Scatter(y=rewards, name='Raw Reward', opacity=0.3, 
                    line=dict(color='lightcoral', width=1)),
@@ -426,13 +410,12 @@ def plot_training_results(rewards, positions, algorithm):
     if window > 0:
         fig.add_trace(
             go.Scatter(x=list(range(window-1, len(rewards))), y=rewards_ma,
-                      name=f'{window}-Episode MA', line=dict(color='darkred', width=2)),
+                       name=f'{window}-Episode MA', line=dict(color='darkred', width=2)),
             row=1, col=1
         )
     fig.add_hline(y=-110, line_dash="dash", line_color="green",
                   annotation_text="Success Threshold", row=1, col=1)
     
-    # Plot 2: Position
     fig.add_trace(
         go.Scatter(y=positions, name='Max Position', opacity=0.3,
                    line=dict(color='lightblue', width=1)),
@@ -441,13 +424,12 @@ def plot_training_results(rewards, positions, algorithm):
     if window > 0:
         fig.add_trace(
             go.Scatter(x=list(range(window-1, len(positions))), y=positions_ma,
-                      name=f'{window}-Episode MA', line=dict(color='darkblue', width=2)),
+                       name=f'{window}-Episode MA', line=dict(color='darkblue', width=2)),
             row=2, col=1
         )
     fig.add_hline(y=0.5, line_dash="dash", line_color="green",
                   annotation_text="Goal", row=2, col=1)
     
-    # Update layout
     fig.update_xaxes(title_text="Episode", row=2, col=1)
     fig.update_yaxes(title_text="Reward", row=1, col=1)
     fig.update_yaxes(title_text="Position", row=2, col=1)
@@ -463,7 +445,6 @@ def plot_training_results(rewards, positions, algorithm):
     return fig
 
 def create_performance_comparison(results_dict):
-    """Create comparison chart for multiple runs."""
     
     fig = go.Figure()
     
@@ -493,35 +474,21 @@ def create_performance_comparison(results_dict):
     
     return fig
 
-# ============================================================================
-# MAIN APPLICATION
-# ============================================================================
-
 def main():
     
-    # Header
     st.title("🏔️ MountainCar Reinforcement Learning")
     
-    # Add MountainCar GIF visualization
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        st.image(
-            "https://gymnasium.farama.org/_images/mountain_car.gif",
-            caption="MountainCar-v0 Environment",
-            use_container_width=True
-        )
-    
+    st.image("https://gymnasium.farama.org/_images/mountain_car.gif", caption="MountainCar Environment", use_column_width=False, width=600)
+
     st.markdown("""
     **Interactive Demo**: Compare Q-Learning and Deep Q-Network (DQN) algorithms on the classic MountainCar problem.
     
     Adjust hyperparameters, train models, and visualize results in real-time!
     """)
     
-    # Sidebar
     st.sidebar.title("⚙️ Configuration")
     st.sidebar.markdown("---")
     
-    # Algorithm selection
     algorithm = st.sidebar.selectbox(
         "Select Algorithm",
         ["Q-Learning (Tabular)", "Deep Q-Network (DQN)", "Compare Both"],
@@ -530,13 +497,8 @@ def main():
     
     st.sidebar.markdown("---")
     
-    # Initialize session state
     if 'trained_models' not in st.session_state:
         st.session_state.trained_models = {}
-    
-    # ========================================================================
-    # Q-LEARNING CONFIGURATION
-    # ========================================================================
     
     if algorithm in ["Q-Learning (Tabular)", "Compare Both"]:
         st.sidebar.subheader("📊 Q-Learning Parameters")
@@ -565,10 +527,6 @@ def main():
         
         st.sidebar.markdown("---")
     
-    # ========================================================================
-    # DQN CONFIGURATION
-    # ========================================================================
-    
     if algorithm in ["Deep Q-Network (DQN)", "Compare Both"]:
         st.sidebar.subheader("🧠 DQN Parameters")
         
@@ -595,45 +553,35 @@ def main():
     
     st.sidebar.markdown("---")
     
-    # Train button
     train_button = st.sidebar.button("🚀 Train Model", type="primary", use_container_width=True)
     
-    # ========================================================================
-    # MAIN CONTENT AREA
-    # ========================================================================
-    
-    # Information boxes
     col1, col2, col3 = st.columns(3)
     
     with col1:
         st.markdown("""
-        <div class="info-box">
+        <div class="card-box objective-box">
             <h4>🎯 Objective</h4>
-            <p>Drive an underpowered car up a steep hill by building momentum</p>
+            <p>Drive an underpowered car up a steep hill by building momentum (swinging back and forth).</p>
         </div>
         """, unsafe_allow_html=True)
     
     with col2:
         st.markdown("""
-        <div class="info-box">
-            <h4>📈 Reward</h4>
-            <p>-1 per timestep until reaching position ≥ 0.5</p>
+        <div class="card-box reward-box">
+            <h4>📈 Reward Structure</h4>
+            <p><strong>-1</strong> per timestep.<br>Goal is to minimize negative reward (reach flag fast).</p>
         </div>
         """, unsafe_allow_html=True)
     
     with col3:
         st.markdown("""
-        <div class="info-box">
-            <h4>🎮 Actions</h4>
-            <p>Left, No Push, Right</p>
+        <div class="card-box action-box">
+            <h4>🎮 Action Space</h4>
+            <p>Discrete(3):<br>0: Accelerate Left<br>1: Don't Accelerate<br>2: Accelerate Right</p>
         </div>
         """, unsafe_allow_html=True)
     
     st.markdown("---")
-    
-    # ========================================================================
-    # TRAINING AND RESULTS
-    # ========================================================================
     
     if train_button:
         
@@ -648,11 +596,9 @@ def main():
             
             st.success(f"✅ Training completed in {training_time:.1f} seconds!")
             
-            # Test the agent
             with st.spinner("Testing trained agent..."):
                 test_results = test_qlearning(results['policy'], buckets)
             
-            # Store results
             st.session_state.trained_models['Q-Learning'] = {
                 'train': results,
                 'test': test_results,
@@ -660,7 +606,6 @@ def main():
                 'params': {'buckets': buckets, 'episodes': ql_episodes}
             }
             
-            # Display results in tabs
             tab1, tab2, tab3 = st.tabs(["📈 Training Progress", "🎯 Performance", "ℹ️ Details"])
             
             with tab1:
@@ -679,7 +624,6 @@ def main():
                 with col4:
                     st.metric("Episodes", f"{ql_episodes}")
                 
-                # Success rate interpretation
                 if test_results['success_rate'] >= 80:
                     st.markdown("""
                     <div class="success-box">
@@ -722,11 +666,9 @@ def main():
             
             st.success(f"✅ Training completed in {training_time:.1f} seconds!")
             
-            # Test the agent
             with st.spinner("Testing trained agent..."):
                 test_results = test_dqn(results['agent'])
             
-            # Store results
             st.session_state.trained_models['DQN'] = {
                 'train': results,
                 'test': test_results,
@@ -734,7 +676,6 @@ def main():
                 'params': {'hidden_size': hidden_size, 'episodes': dqn_episodes}
             }
             
-            # Display results in tabs
             tab1, tab2, tab3, tab4 = st.tabs(["📈 Training Progress", "📉 Loss Curve", "🎯 Performance", "ℹ️ Details"])
             
             with tab1:
@@ -747,13 +688,13 @@ def main():
                 if window > 0:
                     loss_ma = np.convolve(results['losses'], np.ones(window)/window, mode='valid')
                     fig.add_trace(go.Scatter(y=results['losses'], name='Loss', opacity=0.3,
-                                            line=dict(color='lightcoral')))
+                                             line=dict(color='lightcoral')))
                     fig.add_trace(go.Scatter(x=list(range(window-1, len(results['losses']))),
-                                            y=loss_ma, name=f'{window}-Episode MA',
-                                            line=dict(color='darkred', width=2)))
+                                             y=loss_ma, name=f'{window}-Episode MA',
+                                             line=dict(color='darkred', width=2)))
                 else:
                     fig.add_trace(go.Scatter(y=results['losses'], name='Loss',
-                                            line=dict(color='darkred')))
+                                             line=dict(color='darkred')))
                 
                 fig.update_layout(title="Training Loss", xaxis_title="Episode",
                                  yaxis_title="MSE Loss", height=400)
@@ -771,7 +712,6 @@ def main():
                 with col4:
                     st.metric("Episodes", f"{dqn_episodes}")
                 
-                # Performance interpretation
                 if test_results['success_rate'] >= 90:
                     st.markdown("""
                     <div class="success-box">
@@ -803,7 +743,7 @@ def main():
                     'Target Update': f'Every {target_update} episodes'
                 })
         
-        else:  # Compare Both
+        else:
             
             st.header("⚖️ Algorithm Comparison")
             
@@ -834,7 +774,6 @@ def main():
             
             st.markdown("---")
             
-            # Comparison chart
             comparison_data = {
                 'Q-Learning': ql_test,
                 'DQN': dqn_test
@@ -842,22 +781,17 @@ def main():
             fig = create_performance_comparison(comparison_data)
             st.plotly_chart(fig, use_container_width=True)
             
-            # Analysis
             st.subheader("📊 Analysis")
             
             winner = "DQN" if dqn_test['success_rate'] > ql_test['success_rate'] else "Q-Learning"
             
             st.markdown(f"""
-            <div class="info-box">
+            <div class="info-box-generic">
                 <h4>🏆 Winner: {winner}</h4>
                 <p><strong>Q-Learning:</strong> {ql_test['success_rate']:.1f}% success rate in {ql_time:.1f}s</p>
                 <p><strong>DQN:</strong> {dqn_test['success_rate']:.1f}% success rate in {dqn_time:.1f}s</p>
             </div>
             """, unsafe_allow_html=True)
-    
-    # ========================================================================
-    # INFORMATION SECTION
-    # ========================================================================
     
     st.markdown("---")
     
@@ -924,7 +858,6 @@ def main():
         - **Loss plot (DQN)**: Should decrease and stabilize
         """)
     
-    # Footer
     st.markdown("---")
     st.markdown("""
     <div style='text-align: center; color: #7f8c8d;'>
